@@ -1,0 +1,10 @@
+<root>
+	<carrier_GLNtoNAME_map>
+		<map_case carrier_GLN="0000000000123">
+			<carrier_name>Почта России</carrier_name>  
+		</map_case>
+		<map_case carrier_GLN="1000000000000">
+			<carrier_name>Собственная служба доставки</carrier_name>  
+		</map_case>
+	</carrier_GLNtoNAME_map>  
+</root> 
