@@ -1,19 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configs>
-    
+    <internals>
+        <GLN>2000000000000</GLN>
+    </internals>
     <partners>
         
         <partner>
             <name>EdiVendor</name>
             <GLN>1000000000000</GLN>
-            <inbound_dir>D:\Files\11sem\Magistr\Projects\VtigerAPIUser\FreeAS2Inter\from_EdiVendor</inbound_dir>
-            <outbound_dir>D:\Files\11sem\Magistr\Projects\VtigerAPIUser\FreeAS2Inter\to_EdiVendor</outbound_dir>
+            <inbound_dir>D:\Files\11sem\Magistr\Projects\VTigerAS2EDIntegration\FreeAS2Inter\EdiVendor\In</inbound_dir>
+            <outbound_dir>D:\Files\11sem\Magistr\Projects\VTigerAS2EDIntegration\FreeAS2Inter\EdiVendor\Out</outbound_dir>
         </partner>
         <partner>
             <name>EdiShop</name>
             <GLN>2000000000000</GLN>
-            <inbound_dir>D:\Files\11sem\Magistr\Projects\VtigerAPIUser\FreeAS2Inter\from_EdiShop</inbound_dir>
-            <outbound_dir>D:\Files\11sem\Magistr\Projects\VtigerAPIUser\FreeAS2Inter\to_EdiShop</outbound_dir>
+            <inbound_dir>D:\Files\11sem\Magistr\Projects\VTigerAS2EDIntegration\FreeAS2Inter\EdiShop\In\</inbound_dir>
+            <outbound_dir>D:\Files\11sem\Magistr\Projects\VTigerAS2EDIntegration\FreeAS2Inter\EdiShop\Out\</outbound_dir>
         </partner>
         
     </partners>

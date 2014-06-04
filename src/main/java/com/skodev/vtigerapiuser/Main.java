@@ -1,20 +1,28 @@
 package com.skodev.vtigerapiuser;
 
+import com.skodev.ConfigReader.ConfigReader;
 import com.skodev.FreeAS2.FreeAS2Communicator;
-import com.skodev.FreeAS2.IncomingMsgsListener;
 import com.skodev.REST.ContainerImpl;
-import com.skodev.REST.TestContainer;
+import com.skodev.REST.HttpServer;
+import com.skodev.VtigerClient.DoQueryExecuter;
+import com.skodev.VtigerClient.VTigerAPIClient;
+import com.skodev.VtigerController.InboundController;
+import com.skodev.VtigerController.OutboundController;
+import com.skodev.exceptions.AS2Exception;
+import com.skodev.exceptions.MappingException;
 import com.skodev.exceptions.VtigerInterExc;
+import com.skodev.mapping.OutboundMapper_edivendor2edishop;
 import com.vtiger.vtwsclib.WSClient;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
@@ -23,12 +31,14 @@ import org.milyn.edi.unedifact.d01b.ORDERS.Orders;
 import org.milyn.edi.unedifact.d01b.ORDERS.SegmentGroup28;
 import org.milyn.edi.unedifact.d01b.common.IMDItemDescription;
 import org.milyn.smooks.edi.unedifact.model.UNEdifactInterchange;
+import org.milyn.smooks.edi.unedifact.model.r41.UNB41;
 import org.milyn.smooks.edi.unedifact.model.r41.UNEdifactInterchange41;
 import org.milyn.smooks.edi.unedifact.model.r41.UNEdifactMessage41;
+import org.milyn.smooks.edi.unedifact.model.r41.UNH41;
+import org.milyn.smooks.edi.unedifact.model.r41.UNT41;
+import org.milyn.smooks.edi.unedifact.model.r41.UNZ41;
+import org.milyn.smooks.edi.unedifact.model.r41.types.Party;
 import org.simpleframework.http.core.Container;
-import org.simpleframework.http.core.ContainerServer;
-import org.simpleframework.transport.Server;
-import org.simpleframework.transport.connect.SocketConnection;
 import org.xml.sax.SAXException;
 
 public class Main {
@@ -193,54 +203,69 @@ public class Main {
         }
     }
     
-    public static void testAS2Monitor () throws IOException, Exception{
-        class ListenerImpl implements IncomingMsgsListener{
-
-            @Override
-            public void newInbound(File msg) {
-                System.out.println("New inbound file:" + msg.getPath());
-            }
-            
-        }
-        FreeAS2Communicator fc = new FreeAS2Communicator(2000);
-        ListenerImpl li = new ListenerImpl();
-        fc.registerInboundListener(new File("D:\\Files\\11sem\\Magistr\\Projects\\VtigerAPIUser\\FreeAS2Inter\\from_supplier\\"), 
-                new File("D:\\Files\\11sem\\Magistr\\Projects\\VtigerAPIUser\\FreeAS2Inter\\to_supplier\\"), li);
-        //fc.sendMsg("Привет мир!", li, "newMsgName");
-        
+    public static void testInbound(){
+        VTigerAPIClient vtcl = new VTigerAPIClient("http://vm1.salesplatform.ru/edivendor", "admin", "QNCadBuxbKKq03E");
+        InboundController  ic=  new InboundController(vtcl);
+        ic.newInbound(new File("D:\\Files\\11sem\\Magistr\\Projects\\VTigerAS2EDIntegration\\ORDERSexmpl.edi"));
     }
-
+    
+    public static void testEDIOut() throws IOException, SAXException{
+        D01BInterchangeFactory f = D01BInterchangeFactory.getInstance();
+        UNEdifactInterchange41 inter = new UNEdifactInterchange41();
+        UNEdifactMessage41 msg = new UNEdifactMessage41();
+        LinkedList<UNEdifactMessage41> msgList = new LinkedList<UNEdifactMessage41>();
+        msgList.add(msg);
+        inter.setMessages(msgList);
+        inter.setInterchangeHeader(new UNB41());
+        inter.getInterchangeHeader().setRecipient(new Party());
+        inter.getInterchangeHeader().getRecipient().setId("12345676");
+        inter.setInterchangeTrailer(new UNZ41());
+        msg.setMessageHeader(new UNH41());
+        msg.getMessageHeader().setMessageRefNum("777777");
+        msg.setMessageTrailer(new UNT41());
+        msg.setMessage(new Orders());
+        inter.getInterchangeTrailer().setControlCount(2);
+        
+        
+        
+        //inter.setInterchangeHeader(new UNB41().setControlRef("123456789"));
+        
+        File out = new File("D:\\Files\\11sem\\Magistr\\Projects\\VTigerAS2EDIntegration\\testOut.edi");
+        out.createNewFile();
+        FileWriter fw = new FileWriter(out);
+        inter.write(fw);
+        //f.toUNEdifact(inter, fw);
+    }
+    
+    public static void testOutbound() throws AS2Exception, IOException, SAXException, VtigerInterExc, MappingException{
+        VTigerAPIClient vtcl = new VTigerAPIClient("http://vm1.salesplatform.ru/edishop", "admin", "QNCadBuxbKKq03E");
+        InboundController  ic =  new InboundController(vtcl);
+        FreeAS2Communicator AS2Com = new FreeAS2Communicator(2000, ic);
+        OutboundController oc = new OutboundController(vtcl, AS2Com);
+        oc.registerMapper("1000000000000", new OutboundMapper_edivendor2edishop(vtcl, D01BInterchangeFactory.getInstance()));
+       // Container c = new ContainerImpl(oc);
+       // HttpServer serv = new HttpServer(c);
+        //serv.start(13007);
+        oc.newOrder("14x12");
+    }
+    
     public static void main(String[] args) throws IOException, SAXException, VtigerInterExc, Exception {
+     //   VTigerAPIClient vtcl = new VTigerAPIClient("http://vm1.salesplatform.ru/edishop", "admin", "QNCadBuxbKKq03E");
+      //  System.out.println(vtcl.retrieve("14x12"));
+//System.out.println(vtcl.retrieve("11x4"));
+//        InboundController  ic=  new InboundController(vtcl);
+//        FreeAS2Communicator AS2Com = new FreeAS2Communicator(2000, ic);
+//        
+//        OutboundController oc = new OutboundController(vtcl, AS2Com);
+       // testInbound();
+        //testEDIOut();
         
-//          WSClient client = new WSClient("http://vm1.salesplatform.ru/edivendor");
-//          JSONArray queryResult = client.doQuery("SELECT id FROM Products WHERE productcode LIKE 'GTIN0000000001'");
-//          System.out.println(queryResult);
-//          System.out.println(client.hasError(queryResult));
-//          System.out.println(client.lastError());
-        
-//        HttpServer serv = new HttpServer();
-//        serv.addHandlerForResourse(new VtigerRESTHandler(), "VtigerEdiShop/newORDER");
-//        serv.start(13007);
-        
-        
-//        Container container = new ContainerImpl();
-//        Server server = new ContainerServer(container);
-//        SocketConnection connection = new SocketConnection(server);
-//        SocketAddress address = new InetSocketAddress(13007);
-//        connection.connect(address);
-        
-        new FreeAS2Communicator(2000).registerInOutDirs();
-        
-//DoQueryExecuter e = new DoQueryExecuter(Main.auth());
-        //System.out.println(e.getProductRef("GTIN0000000001"));
-        //Main.map();
-       // Main.doDescribe("Vendors");
-//Main.doQuery();
-        //SalesPlatformAdapter sa = new SalesPlatformAdapter("http://vm1.salesplatform.ru/edivendor", "admin", "QNCadBuxbKKq03E");
-        //sa.inboundInterchange(null);
-        //Main.doRetrieve();
-      //  Main.doCreate();
-//Main.doListType();
+      testOutbound();
+        //VTigerAPIClient vtcl = new VTigerAPIClient("http://vm1.salesplatform.ru/edishop", "admin", "QNCadBuxbKKq03E");
+        //System.out.println(DoQueryExecuter.getVendorGLN("11x4", vtcl.auth()));
+        //doDescribe("Vendors");
+//        
+   // FileUtils.deleteDirectory(new File("D:\\Files\\11sem\\Magistr\\Projects\\VTigerAS2EDIntegration\\FreeAS2Inter\\EdiShop\\In\\processed"));
     }
 
 }

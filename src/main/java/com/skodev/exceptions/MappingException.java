@@ -30,4 +30,13 @@ public class MappingException extends Exception {
     public MappingException(String msg) {
         super(msg);
     }
+
+    public MappingException(String message, Throwable cause) {
+        super(message, cause);
+    }
+
+    public MappingException(Throwable cause) {
+        super(cause);
+    }
+    
 }

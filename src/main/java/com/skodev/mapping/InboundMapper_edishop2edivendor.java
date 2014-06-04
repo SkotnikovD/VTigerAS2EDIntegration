@@ -1,19 +1,16 @@
 package com.skodev.mapping;
 
 import com.skodev.VtigerClient.DoQueryExecuter;
+import com.skodev.VtigerClient.VTigerAPIClient;
 import com.skodev.exceptions.MappingException;
 import com.skodev.exceptions.VtigerInterExc;
 import com.vtiger.vtwsclib.WSClient;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import org.json.simple.JSONObject;
 import org.milyn.edi.unedifact.d01b.D01BInterchangeFactory;
-import org.milyn.edi.unedifact.d01b.INVOIC.Invoic;
 import org.milyn.edi.unedifact.d01b.ORDERS.Orders;
 import org.milyn.edi.unedifact.d01b.ORDERS.SegmentGroup1;
 import org.milyn.edi.unedifact.d01b.ORDERS.SegmentGroup2;
@@ -23,57 +20,46 @@ import org.milyn.edi.unedifact.d01b.common.MOAMonetaryAmount;
 import org.milyn.edi.unedifact.d01b.common.PIAAdditionalProductId;
 import org.milyn.edi.unedifact.d01b.common.QTYQuantity;
 import org.milyn.edi.unedifact.d01b.common.field.C507DateTimePeriod;
-import org.milyn.smooks.edi.unedifact.model.UNEdifactInterchange;
 import org.milyn.smooks.edi.unedifact.model.r41.UNEdifactInterchange41;
 import org.milyn.smooks.edi.unedifact.model.r41.UNEdifactMessage41;
-import org.xml.sax.SAXException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class InboundMapper_edishop2edivendor implements InboundMapperInterface {
 
-    private WSClient client;
+    private VTigerAPIClient vtapi;
+    private static Logger log = LoggerFactory.getLogger(InboundMapper_edishop2edivendor.class.getClass());
+    // Create an instance of the EJC generated factory class... cache this and reuse !!!
+    private final D01BInterchangeFactory factory;
 
-    public InboundMapper_edishop2edivendor(WSClient client) {
-        this.client = client;
+    public InboundMapper_edishop2edivendor(VTigerAPIClient vtapi, D01BInterchangeFactory factory) {
+        this.vtapi = vtapi;
+        this.factory = factory;
     }
 
     @Override
-    public void newInbound(InputStream stream) throws MappingException {
-        try {
-            // Create an instance of the EJC generated factory class... cache this and reuse !!!
-            D01BInterchangeFactory factory = D01BInterchangeFactory.getInstance();
+    public void newInbound(UNEdifactInterchange41 interchange) throws MappingException, VtigerInterExc {
+        log.info("Inbound controller starts to process new interchange '{}'", interchange.getInterchangeHeader().getControlRef());
+        for (UNEdifactMessage41 messageWithControlSegments : interchange.getMessages()) {
+            // BT: Message number
+            log.info("Start processing message '{}'", messageWithControlSegments.getMessageHeader().getMessageRefNum());
 
-            // Deserialize the UN/EDIFACT interchange stream to Java...
-            InputStream stream = new FileInputStream("ORDERStest1.edi");
-
-            UNEdifactInterchange interchange;
-            interchange = factory.fromUNEdifact(stream);
-
-            // Need to test which interchange syntax version.  Supports v4.1 at the moment...
-            if (interchange instanceof UNEdifactInterchange41) {
-                UNEdifactInterchange41 interchange41 = (UNEdifactInterchange41) interchange;
-
-                System.out.println("\tInterchange Sender's ID: " + interchange41.getInterchangeHeader().getSender().getId());
-
-                for (UNEdifactMessage41 messageWithControlSegments : interchange41.getMessages()) {
-                    // Process the messages...
-                    // BT: Message number
-                    System.out.println("\tMessage Name: " + messageWithControlSegments.getMessageHeader().getMessageRefNum());
-
-                    Object messageObj = messageWithControlSegments.getMessage();
-                    if (messageObj instanceof Orders) {
-                        this.inboundORDERS((Orders) messageObj);
-                    }
-                }
+            Object messageObj = messageWithControlSegments.getMessage();
+            if (messageObj instanceof Orders) {
+                this.inboundORDERS((Orders) messageObj);
+            } else {
+                throw new MappingException("Inbound mapper for partner " + interchange.getInterchangeHeader().getSender().getId()
+                        + " doesn't support " + messageWithControlSegments.getMessageHeader().getMessageIdentifier().getTypeSubFunctionId()
+                        + " message type. Processing aborted.");
             }
-        } finally {
-            stream.close();
         }
+        log.info("Inbound controller has finished to process interchange '{}'", interchange.getInterchangeHeader().getControlRef());
     }
 
     //"BT:" comments - explanation of business meaning (Business Term)
     private void inboundORDERS(Orders ordersMsg) throws MappingException, VtigerInterExc {
-        DoQueryExecuter queryExec = new DoQueryExecuter(client);
         //Create structure for execute doCreate request
+        log.info("Mapper {} start to process ORDER msg number {} ", this.getClass().toString(), ordersMsg.getBGMBeginningOfMessage().getC106DocumentMessageIdentification().getE1004DocumentIdentifier());
         Map JSON = new HashMap();
         Map inventories = new HashMap();
         ArrayList<Map> products = new ArrayList<>();
@@ -81,24 +67,6 @@ public class InboundMapper_edishop2edivendor implements InboundMapperInterface {
         inventories.put("Products", products);
         inventories.put("Global", global);
         JSON.put("inventories", inventories);
-
-        JSONObject contrObj;
-        valuesmap.put("assigned_user_id", "19x1");
-        valuesmap.put("ship_street", "Адрес доставки");
-        valuesmap.put("account_id", "3x2");
-
-        valuesmap.put("bill_street", "Ю/а улица");
-
-        valuesmap.put("carrier", "Внутренняя служба перевозки");
-        valuesmap.put("inventories", inventories);
-        inventories.put("Products", Products);
-        inventories.put("Global", Global);
-        Products.add(product0);
-        product0.put("productDescription", "Товар");
-        product0.put("productName", "GTIN777777");
-        product0.put("hdnProductId", "3");
-        product0.put("qty", "3");
-        Global.put("grandTotal", "7777");
 
         //BT: Order number --maps-- Заказ на закупку
         JSON.put("vtiger_purchaseorder", ordersMsg.getBGMBeginningOfMessage().getC106DocumentMessageIdentification().getE1004DocumentIdentifier());
@@ -134,6 +102,7 @@ public class InboundMapper_edishop2edivendor implements InboundMapperInterface {
         }
 
         // BT: Partys' ids
+        JSONObject contrObj = null;
         if (ordersMsg.getSegmentGroup2() == null) {
             throw new MappingException("Missing Segment2 group. Segment2 group is Required in ECR-Rus specs");
         }
@@ -148,10 +117,10 @@ public class InboundMapper_edishop2edivendor implements InboundMapperInterface {
                 case "BY":
                     //BT: Buyer's ID
                     BYFlag = true;
-                    String contrRef = queryExec.getContragentRefByGLN(sg2.getNADNameAndAddress().getC082PartyIdentificationDetails().getE3039PartyIdentifier());
+                    String contrRef = DoQueryExecuter.getContragentRefByGLN(sg2.getNADNameAndAddress().getC082PartyIdentificationDetails().getE3039PartyIdentifier(), vtapi.auth());
                     JSON.put("account_id", contrRef);
                     //Complete buyer's adress fields
-                    contrObj = client.doRetrieve(contrRef);
+                    contrObj = vtapi.retrieve(contrRef);
                     //Юредический адрес
                     JSON.put("bill_street", contrObj.get("bill_street"));
                     JSON.put("bill_city", contrObj.get("bill_city"));
@@ -195,8 +164,8 @@ public class InboundMapper_edishop2edivendor implements InboundMapperInterface {
             if (sg28.getLINLineItem().getC212ItemNumberIdentification().getE7143ItemTypeIdentificationCode().equals("SRV")) {
                 //BT: GTIN codes in use
                 //This is item's GTIN
-                String itemRef = queryExec.getProductRef(sg28.getLINLineItem().getC212ItemNumberIdentification().getE7140ItemIdentifier());
-                itemObj = client.doRetrieve(itemRef);
+                String itemRef = DoQueryExecuter.getProductRef(sg28.getLINLineItem().getC212ItemNumberIdentification().getE7140ItemIdentifier(), vtapi.auth());
+                itemObj = vtapi.retrieve(itemRef);
                 item.put("hdnProductCode", itemObj.get("productcode"));
                 item.put("hdnProductId", itemRef.substring(itemRef.lastIndexOf("x") + 1));
                 //item.put("productDescription",itemObj.get("description"));
@@ -235,6 +204,10 @@ public class InboundMapper_edishop2edivendor implements InboundMapperInterface {
                 }
             }
 
+            //BT: group tax count
+            global.put("TaxType", "group");
+            JSON.put("hdnTaxType", "group");
+
             //BT: Value of order line
             Iterator<MOAMonetaryAmount> MOAlist = sg28.getMOAMonetaryAmount().iterator();
             while (MOAlist.hasNext()) {
@@ -242,33 +215,41 @@ public class InboundMapper_edishop2edivendor implements InboundMapperInterface {
                 switch (MOA.getC516MonetaryAmount().getE5025MonetaryAmountTypeCodeQualifier()) {
                     case ("128"):
                         //BT: Total amount of item line
-                        item.put("productTotal", MOA.getC516MonetaryAmount().getE5004MonetaryAmount());
+                        //item.put("productTotal", MOA.getC516MonetaryAmount().getE5004MonetaryAmount());
                         break;
                     case ("203"):
                         //BT: Goods item total - allowances + charge
-                        item.put("netPrice", MOA.getC516MonetaryAmount().getE5004MonetaryAmount());
+                        //item.put("totalAfterDiscount", MOA.getC516MonetaryAmount().getE5004MonetaryAmount());
+                        //item.put("netPrice", MOA.getC516MonetaryAmount().getE5004MonetaryAmount());
                         break;
                 }
 
                 //Скидка
-                //Всего после скидки
                 //НДС
-                item.put("tax1_percentage",
             }
 
             //BT: Price of order line
-            item.put("listPrice", sg28.getSegmentGroup32().get(0).getPRIPriceDetails().getC509PriceInformation().getE5118PriceAmount());
+            if(sg28.getSegmentGroup32().get(0).getPRIPriceDetails().getC509PriceInformation().getE5125PriceCodeQualifier().equals("AAB")){
+                //BT: Item's Gross price
+                item.put("listPrice", sg28.getSegmentGroup32().get(0).getPRIPriceDetails().getC509PriceInformation().getE5118PriceAmount());
+            }
+            //item.put("listPrice", sg28.getSegmentGroup32().get(0).getPRIPriceDetails().getC509PriceInformation().getE5118PriceAmount());
 
         }
         //BT: Value of all ordered lines
         if (ordersMsg.getMOAMonetaryAmount().size() > 0) {
             if (ordersMsg.getMOAMonetaryAmount().get(0).getC516MonetaryAmount().getE5025MonetaryAmountTypeCodeQualifier().equals("86")) {
-                ordersMsg.getMOAMonetaryAmount().get(0).getC516MonetaryAmount().getE5004MonetaryAmount();
+                //global.put("grandTotal", ordersMsg.getMOAMonetaryAmount().get(0).getC516MonetaryAmount().getE5004MonetaryAmount());
+                //JSON.put("ndnGrandTotal", ordersMsg.getMOAMonetaryAmount().get(0).getC516MonetaryAmount().getE5004MonetaryAmount());
             }
 
         }
         JSON.put("sostatus", "Created");
         JSON.put("invoicestatus", "AutoCreated");
-        JSON.put("subject", (String) contrObj.get("account_name") + " " + ordersMsg.getBGMBeginningOfMessage().getC106DocumentMessageIdentification().getE1004DocumentIdentifier());
+        JSON.put("subject", contrObj.get("accountname") + "_" + ordersMsg.getBGMBeginningOfMessage().getC106DocumentMessageIdentification().getE1004DocumentIdentifier());
+        log.info("Mapping of ORDERS msg {} completed. Trying to send msg to VTiger... ", ordersMsg.getBGMBeginningOfMessage().getC106DocumentMessageIdentification().getE1004DocumentIdentifier());
+        vtapi.newORDERS(JSON);
+        log.info("ORDERS msg {} added to VTiger CRM successfully ", ordersMsg.getBGMBeginningOfMessage().getC106DocumentMessageIdentification().getE1004DocumentIdentifier());
     }
+
 }

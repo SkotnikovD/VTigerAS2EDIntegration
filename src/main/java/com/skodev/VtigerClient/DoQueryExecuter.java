@@ -9,7 +9,7 @@ public class DoQueryExecuter {
 
     private static final String productRefbyCodeRequest = "SELECT id FROM Products WHERE productcode LIKE '%s'";
     private static final String contragentByGLNRequest = "SELECT id FROM Accounts WHERE siccode LIKE '%s'";
-    private static final String getVendorGLNRequest = "SELECT vendorGLN FROM Vendors WHERE id LIKE '%s'";
+    private static final String getVendorGLNRequest = "SELECT description FROM Vendors WHERE id LIKE '%s'";
 
 //@return Contragent reference in format 'module_id'x'contragent_id'
     public static String getContragentRefByGLN(String GLN, WSClient client) throws VtigerInterExc {
@@ -53,8 +53,8 @@ public class DoQueryExecuter {
                 throw new VtigerInterExc("No vendor found with ref = '" + vendorRef + "'");
             } else {
                 JSONObject res = (JSONObject) queryResult.get(0);
-                String sb = (String) res.get("vendorGLN");
-                return sb;
+                String sb = (String) res.get("description");
+                return res.toString();
             }
         }
     }
